@@ -491,10 +491,13 @@ button{font:inherit}
   }
 
   // Radial connections matching the canonical SVG.
+  const centerConnected = new Set([0,2,4,6]); // only cardinal spokes connect to center
   for(let i=0;i<8;i++){
     const r1 = nodes.get(nodeId(1,i));
-    r1.inward = "C";
-    nodes.get("C").neighbors.push(r1.id);
+    if(centerConnected.has(i)){
+      r1.inward = "C";
+      nodes.get("C").neighbors.push(r1.id);
+    }
 
     const r2idx = i*2;
     r1.outward = nodeId(2,r2idx);
