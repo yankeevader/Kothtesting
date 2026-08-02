@@ -285,6 +285,7 @@ button{font:inherit}
       <strong>Game Mode</strong>
       <label><input type="radio" name="gameMode" value="ai" checked> Play against the computer</label>
       <label><input type="radio" name="gameMode" value="local"> Two players on this computer</label>
+      <label><input type="radio" name="gameMode" value="online"> Quick Match online</label>
     </div>
 
     <div class="mode-box" id="colorChoice">
@@ -319,6 +320,7 @@ button{font:inherit}
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (() => {
   const NS = "http://www.w3.org/2000/svg";
@@ -342,6 +344,116 @@ button{font:inherit}
 
   let state;
   let snapshots = [];
+
+  const SUPABASE_URL = "https://vdarsvfaxoaicazlbemg.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_P3ksS_XluEXoTRjca962UA_YaisHQ41";
+  const net = {
+    client:null, queue:null, game:null, playerId:null, opponentId:null,
+    gameId:null, color:null, connected:false, matching:false, started:false
+  };
+
+  function makePlayerId(){
+    const saved=sessionStorage.getItem("kothPlayerId");
+    if(saved) return saved;
+    const id=(crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replaceAll("-","");
+    sessionStorage.setItem("kothPlayerId",id);
+    return id;
+  }
+
+  function simpleHash(text){
+    let h=2166136261;
+    for(let i=0;i<text.length;i++){ h^=text.charCodeAt(i); h=Math.imul(h,16777619); }
+    return (h>>>0).toString(16).padStart(8,"0");
+  }
+
+  function localCanAct(){
+    return state.mode!=="online" || (net.connected && state.current===net.color);
+  }
+
+  async function leaveOnline(){
+    net.matching=false; net.connected=false; net.started=false;
+    if(net.client && net.queue){ try{ await net.client.removeChannel(net.queue); }catch(e){} }
+    if(net.client && net.game){ try{ await net.client.removeChannel(net.game); }catch(e){} }
+    net.queue=null; net.game=null; net.opponentId=null; net.gameId=null; net.color=null;
+  }
+
+  async function startQuickMatch(){
+    const result=document.getElementById("flipResult");
+    const button=document.getElementById("flipBtn");
+    if(!window.supabase){ result.textContent="Online service failed to load."; button.disabled=false; return; }
+    await leaveOnline();
+    net.client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    net.playerId=makePlayerId();
+    net.matching=true;
+    button.disabled=true; button.textContent="Searching…";
+    result.textContent="Searching for another player…";
+
+    net.queue=net.client.channel("koth-quick-match-v063",{config:{presence:{key:net.playerId}}});
+    net.queue.on("presence",{event:"sync"},()=>{
+      if(!net.matching) return;
+      const presence=net.queue.presenceState();
+      const ids=Object.keys(presence).sort();
+      const me=ids.indexOf(net.playerId);
+      if(me<0) return;
+      const pairStart=me%2===0 ? me : me-1;
+      if(pairStart<0 || pairStart+1>=ids.length) return;
+      const pair=[ids[pairStart],ids[pairStart+1]].sort();
+      if(!pair.includes(net.playerId)) return;
+      connectMatchedGame(pair[0],pair[1]);
+    });
+    net.queue.subscribe(async status=>{
+      if(status==="SUBSCRIBED") await net.queue.track({player_id:net.playerId,joined_at:Date.now()});
+      if(status==="CHANNEL_ERROR" || status==="TIMED_OUT"){
+        result.textContent="Could not connect to Quick Match."; button.disabled=false; button.textContent="Quick Match";
+      }
+    });
+  }
+
+  async function connectMatchedGame(a,b){
+    if(!net.matching) return;
+    net.matching=false;
+    net.opponentId=net.playerId===a?b:a;
+    net.gameId=`koth-${simpleHash(`${a}:${b}`)}`;
+    net.color=net.playerId===a?"black":"white";
+    const first=(parseInt(simpleHash(net.gameId),16)%2===0)?"black":"white";
+    document.getElementById("flipResult").textContent="Opponent found!";
+
+    net.game=net.client.channel(net.gameId,{config:{broadcast:{self:false},presence:{key:net.playerId}}});
+    net.game.on("broadcast",{event:"move"},async ({payload})=>{
+      if(!net.connected || !payload || payload.player_id!==net.opponentId) return;
+      if(payload.turn!==state.turnNo || payload.color!==state.current) return;
+      const legal=legalDestinations(payload.source,payload.action,payload.color);
+      if(!legal.includes(payload.dest)) return;
+      await executeAction(payload.action,payload.source,payload.dest,true);
+    });
+    net.game.on("broadcast",{event:"resign"},({payload})=>{
+      if(net.connected && payload && payload.player_id===net.opponentId && !state.over) endGame("Opponent left the game.");
+    });
+    net.game.on("presence",{event:"sync"},async ()=>{
+      if(net.started) return;
+      const ids=Object.keys(net.game.presenceState());
+      if(!ids.includes(net.playerId) || !ids.includes(net.opponentId)) return;
+      net.started=true;
+      net.connected=true;
+      if(net.queue){ try{ await net.client.removeChannel(net.queue); }catch(e){} net.queue=null; }
+      startGame(first,"online",net.color);
+      statusEl.textContent=`Online match: you are ${cap(net.color)}. ${cap(first)} goes first.`;
+      if(!localCanAct()) actionHelp.textContent="Waiting for your opponent's move.";
+    });
+    net.game.on("presence",{event:"leave"},()=>{
+      if(net.connected && !state.over) statusEl.textContent="Opponent disconnected. Waiting for them to return…";
+    });
+    net.game.subscribe(async status=>{
+      if(status!=="SUBSCRIBED") return;
+      await net.game.track({player_id:net.playerId,color:net.color});
+      document.getElementById("flipResult").textContent="Opponent found. Connecting…";
+    });
+  }
+
+  function sendOnlineMove(action,source,dest,turn,color){
+    if(!net.connected || !net.game) return;
+    net.game.send({type:"broadcast",event:"move",payload:{player_id:net.playerId,action,source,dest,turn,color}});
+  }
 
   function nodeId(ring, idx){ return ring === 0 ? "C" : `R${ring}-${idx}`; }
 
@@ -493,9 +605,9 @@ button{font:inherit}
 
     actionButtons.forEach(btn=>{
       btn.classList.toggle("active",btn.dataset.action===state.action);
-      btn.disabled=state.over || isAiTurn() || state.animating;
+      btn.disabled=state.over || isAiTurn() || state.animating || !localCanAct();
     });
-    undoBtn.disabled=snapshots.length===0 || state.over || state.mode==="ai" || isAiTurn() || state.animating;
+    undoBtn.disabled=snapshots.length===0 || state.over || state.mode==="ai" || state.mode==="online" || isAiTurn() || state.animating;
     historyEl.innerHTML=state.history.map(x=>`<li>${x}</li>`).join("");
   }
 
@@ -665,7 +777,7 @@ button{font:inherit}
   }
 
   function setAction(action){
-    if(state.over || isAiTurn() || state.animating) return;
+    if(state.over || isAiTurn() || state.animating || !localCanAct()) return;
     state.action=action;
     state.selected=null;
     state.legal=[];
@@ -680,7 +792,7 @@ button{font:inherit}
   }
 
   function onNodeClick(id){
-    if(state.over || isAiTurn() || state.animating || !state.action) {
+    if(state.over || isAiTurn() || state.animating || !localCanAct() || !state.action) {
       if(!state.action) statusEl.textContent="Choose Place, Move, or Jump first.";
       return;
     }
@@ -782,10 +894,11 @@ button{font:inherit}
     return `${cap(state.current)} ${verb} ${dest}${c}.`;
   }
 
-  async function executeAction(action,source,dest){
+  async function executeAction(action,source,dest,remote=false){
     if(state.animating || state.over) return;
     snapshots.push(cloneState(state));
     const actingColor=state.current;
+    const actingTurn=state.turnNo;
     state.animating=true;
     state.active=null;
     state.selected=null;
@@ -818,6 +931,7 @@ button{font:inherit}
     }
 
     state.history.push(describe(action,source,dest,conversions.length));
+    if(state.mode==="online" && !remote) sendOnlineMove(action,source,dest,actingTurn,actingColor);
     state.animating=false;
     render();
 
@@ -842,6 +956,7 @@ button{font:inherit}
     actionHelp.textContent="Choose an action, then select one of your tokens.";
     render();
 
+    if(state.mode==="online" && !localCanAct()) actionHelp.textContent="Waiting for your opponent's move.";
     if(isAiTurn()) queueAiTurn();
   }
 
@@ -875,6 +990,8 @@ button{font:inherit}
 
     if(mode==="ai"){
       statusEl.textContent=`You are ${cap(humanColor)}. ${cap(first)} goes first.`;
+    }else if(mode==="online"){
+      statusEl.textContent=`Online match: you are ${cap(humanColor)}. ${cap(first)} goes first.`;
     }else{
       statusEl.textContent=`${cap(first)} goes first. Choose an action.`;
     }
@@ -903,7 +1020,11 @@ button{font:inherit}
     document.getElementById("colorChoice").style.display="block";
   }
 
-  function newGame(){
+  async function newGame(){
+    if(state && state.mode==="online" && net.connected && net.game){
+      try{ await net.game.send({type:"broadcast",event:"resign",payload:{player_id:net.playerId}}); }catch(e){}
+    }
+    await leaveOnline();
     state=blankState("black");
     snapshots=[];
     document.getElementById("endModal").classList.add("hidden");
@@ -916,12 +1037,19 @@ button{font:inherit}
 
   document.querySelectorAll('input[name="gameMode"]').forEach(input=>{
     input.addEventListener("change",()=>{
-      document.getElementById("colorChoice").style.display=
-        document.querySelector('input[name="gameMode"]:checked').value==="ai" ? "block" : "none";
+      const mode=document.querySelector('input[name="gameMode"]:checked').value;
+      document.getElementById("colorChoice").style.display=mode==="ai" ? "block" : "none";
+      const button=document.getElementById("flipBtn");
+      button.textContent=mode==="online" ? "Quick Match" : "Flip Token";
+      document.querySelector(".start-copy").innerHTML=mode==="online"
+        ? "<strong>Play against another person online.</strong><br>Quick Match pairs the next two waiting players."
+        : "<strong>Choose your color.</strong><br>Flip a token to determine who goes first.";
     });
   });
 
   document.getElementById("flipBtn").addEventListener("click",()=>{
+    const selectedMode=document.querySelector('input[name="gameMode"]:checked').value;
+    if(selectedMode==="online"){ startQuickMatch(); return; }
     const button=document.getElementById("flipBtn");
     const token=document.getElementById("flipTokenVisual");
     const result=document.getElementById("flipResult");
@@ -967,6 +1095,8 @@ button{font:inherit}
     statusEl.textContent=`Turn undone. ${cap(state.current)} to play.`;
     render();
   });
+
+  window.addEventListener("beforeunload",()=>{ if(net.connected && net.game) net.game.send({type:"broadcast",event:"resign",payload:{player_id:net.playerId}}); });
 
   buildHits();
   state=blankState("black");
