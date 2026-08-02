@@ -76,10 +76,25 @@ button{font:inherit}
   .sidebar .panel:first-child,.sidebar .rules{grid-column:1/-1}
 }
 @media(max-width:640px){
-  .app{padding:8px;gap:8px}
-  .board-shell{padding:4px;min-height:0}
-  .sidebar{display:flex}
-  .panel{padding:10px}
+  .app{
+    padding:8px;
+    gap:8px;
+    display:flex;
+    flex-direction:column;
+  }
+  #leftSidebar{order:5!important;height:auto!important;overflow:visible!important}
+  .board-shell{order:2;padding:4px;min-height:0}
+  .sidebar{order:3;display:flex;flex-direction:column}
+  .sidebar .panel:nth-child(1){order:1}
+  .sidebar .panel:nth-child(2){order:2}
+  .sidebar .panel:nth-child(3){order:3}
+  .panel{padding:8px}
+  .logo{max-height:110px}
+  .subtitle{margin:4px 0 8px;font-size:1.1rem}
+  .turn-banner{padding:8px}
+  .score{padding:8px}
+  .action-btn{padding:8px 10px}
+  #history{flex:none!important;height:140px}
 }
 
 .start-copy{
@@ -205,7 +220,7 @@ button{font:inherit}
 <ol id="history" class="history" style="flex:0 0 220px;overflow:auto;margin-bottom:12px"></ol>
 <h2 style="margin:0 0 8px">Rules</h2>
 <div class="rules" style="flex:1;overflow:auto">
-<details open><summary>Setup & Turn</summary><p>Perform exactly one action: Place, Move, or Jump.</p></details>
+<details><summary>Setup & Turn</summary><p>Perform exactly one action: Place, Move, or Jump.</p></details>
 <details><summary>Place</summary><p>Place left/right on the same ring.</p></details>
 <details><summary>Move</summary><p>Move one connected space. Inward requires friendly support.</p></details>
 <details><summary>Jump</summary><p>Jump two spaces. Inward jumps require additional support.</p></details>
