@@ -189,6 +189,12 @@ button{font:inherit}
 .victory-modal{animation:victoryIn .42s cubic-bezier(.2,.8,.2,1)}
 @keyframes victoryIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){.victory-modal{animation:none}}
+.friend-panel{margin-top:12px;padding:12px;border:2px solid #111;background:#fffdf8}
+.friend-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.friend-actions button,.friend-panel input{border:2px solid #111;background:white;padding:10px;border-radius:4px;font:inherit}
+.friend-panel input{width:100%;text-transform:uppercase;letter-spacing:.12em;text-align:center;font-weight:bold}
+.invite-code{font-size:30px;letter-spacing:.18em;font-weight:bold;margin:10px 0}
+.friend-status{min-height:24px;margin:8px 0 0;color:var(--muted)}
 
 </style>
 </head>
@@ -286,12 +292,36 @@ button{font:inherit}
       <label><input type="radio" name="gameMode" value="ai" checked> Play against the computer</label>
       <label><input type="radio" name="gameMode" value="local"> Two players on this computer</label>
       <label><input type="radio" name="gameMode" value="online"> Quick Match online</label>
+      <label><input type="radio" name="gameMode" value="friend"> Play with a Friend</label>
     </div>
 
     <div class="mode-box" id="colorChoice">
       <strong>Your Color</strong>
       <label><input type="radio" name="humanColor" value="black" checked> Black</label>
       <label><input type="radio" name="humanColor" value="white"> White</label>
+    </div>
+
+    <div id="friendPanel" class="friend-panel hidden">
+      <strong>Friend Match</strong>
+      <div id="friendStartActions" class="friend-actions">
+        <button id="createFriendBtn" type="button">Create Game</button>
+        <button id="showJoinFriendBtn" type="button">Join Game</button>
+      </div>
+      <div id="friendJoinBox" class="hidden">
+        <input id="friendCodeInput" maxlength="6" autocomplete="off" placeholder="ENTER CODE" aria-label="Friend invite code">
+        <div class="friend-actions">
+          <button id="joinFriendBtn" type="button">Join</button>
+          <button id="friendBackBtn" type="button">Back</button>
+        </div>
+      </div>
+      <div id="friendHostBox" class="hidden">
+        <div class="invite-code" id="inviteCodeDisplay"></div>
+        <div class="friend-actions">
+          <button id="copyCodeBtn" type="button">Copy Code</button>
+          <button id="copyLinkBtn" type="button">Copy Link</button>
+        </div>
+      </div>
+      <p id="friendStatus" class="friend-status"></p>
     </div>
 
     <div class="flip-stage" aria-live="polite">
@@ -377,6 +407,88 @@ button{font:inherit}
     net.queue=null; net.game=null; net.opponentId=null; net.gameId=null; net.color=null;
   }
 
+  function ensureClient(){
+    if(!window.supabase) return false;
+    if(!net.client) net.client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    if(!net.playerId) net.playerId=makePlayerId();
+    return true;
+  }
+
+  function makeInviteCode(){
+    const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes=new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map(v=>alphabet[v%alphabet.length]).join("");
+  }
+
+  function cleanInviteCode(value){
+    return (value||"").toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g,"").slice(0,6);
+  }
+
+  function inviteLink(code){
+    const url=new URL(window.location.href);
+    url.searchParams.set("join",code);
+    return url.toString();
+  }
+
+  async function copyText(text,button){
+    try{
+      await navigator.clipboard.writeText(text);
+      const old=button.textContent; button.textContent="Copied!";
+      window.setTimeout(()=>button.textContent=old,1200);
+    }catch(e){
+      document.getElementById("friendStatus").textContent="Copy failed. Select and copy the code manually.";
+    }
+  }
+
+  async function startFriendLobby(code,role){
+    const status=document.getElementById("friendStatus");
+    if(!ensureClient()){ status.textContent="Online service failed to load."; return; }
+    await leaveOnline();
+    ensureClient();
+    net.matching=true;
+    code=cleanInviteCode(code);
+    if(code.length!==6){ status.textContent="Enter a valid 6-character invite code."; return; }
+    status.textContent=role==="host"?"Waiting for your friend…":"Looking for that game…";
+    net.queue=net.client.channel(`koth-friend-lobby-${code}`,{config:{presence:{key:net.playerId}}});
+    net.queue.on("presence",{event:"sync"},()=>{
+      if(!net.matching) return;
+      const presence=net.queue.presenceState();
+      let host=null,guest=null;
+      for(const [id,entries] of Object.entries(presence)){
+        for(const entry of entries){
+          if(entry.role==="host") host=id;
+          if(entry.role==="guest") guest=id;
+        }
+      }
+      if(!host || !guest) return;
+      const opponent=net.playerId===host?guest:host;
+      const color=net.playerId===host?"black":"white";
+      const gameId=`koth-friend-${code}`;
+      const first=(parseInt(simpleHash(gameId),16)%2===0)?"black":"white";
+      connectGameChannel(opponent,gameId,color,first);
+    });
+    net.queue.subscribe(async channelStatus=>{
+      if(channelStatus==="SUBSCRIBED") await net.queue.track({player_id:net.playerId,role,code,joined_at:Date.now()});
+      if(channelStatus==="CHANNEL_ERROR" || channelStatus==="TIMED_OUT") status.textContent="Could not connect to the friend match.";
+    });
+  }
+
+  async function createFriendMatch(){
+    const code=makeInviteCode();
+    document.getElementById("friendStartActions").classList.add("hidden");
+    document.getElementById("friendJoinBox").classList.add("hidden");
+    document.getElementById("friendHostBox").classList.remove("hidden");
+    document.getElementById("inviteCodeDisplay").textContent=code;
+    await startFriendLobby(code,"host");
+  }
+
+  async function joinFriendMatch(){
+    const input=document.getElementById("friendCodeInput");
+    const code=cleanInviteCode(input.value); input.value=code;
+    await startFriendLobby(code,"guest");
+  }
+
   async function startQuickMatch(){
     const result=document.getElementById("flipResult");
     const button=document.getElementById("flipBtn");
@@ -388,7 +500,7 @@ button{font:inherit}
     button.disabled=true; button.textContent="Searching…";
     result.textContent="Searching for another player…";
 
-    net.queue=net.client.channel("koth-quick-match-v063",{config:{presence:{key:net.playerId}}});
+    net.queue=net.client.channel("koth-quick-match-v065",{config:{presence:{key:net.playerId}}});
     net.queue.on("presence",{event:"sync"},()=>{
       if(!net.matching) return;
       const presence=net.queue.presenceState();
@@ -411,12 +523,21 @@ button{font:inherit}
 
   async function connectMatchedGame(a,b){
     if(!net.matching) return;
+    const opponent=net.playerId===a?b:a;
+    const gameId=`koth-${simpleHash(`${a}:${b}`)}`;
+    const color=net.playerId===a?"black":"white";
+    const first=(parseInt(simpleHash(gameId),16)%2===0)?"black":"white";
+    connectGameChannel(opponent,gameId,color,first);
+  }
+
+  async function connectGameChannel(opponentId,gameId,color,first){
+    if(!net.matching) return;
     net.matching=false;
-    net.opponentId=net.playerId===a?b:a;
-    net.gameId=`koth-${simpleHash(`${a}:${b}`)}`;
-    net.color=net.playerId===a?"black":"white";
-    const first=(parseInt(simpleHash(net.gameId),16)%2===0)?"black":"white";
+    net.opponentId=opponentId;
+    net.gameId=gameId;
+    net.color=color;
     document.getElementById("flipResult").textContent="Opponent found!";
+    document.getElementById("friendStatus").textContent="Friend connected! Starting game…";
 
     net.game=net.client.channel(net.gameId,{config:{broadcast:{self:false},presence:{key:net.playerId}}});
     net.game.on("broadcast",{event:"move"},async ({payload})=>{
@@ -443,8 +564,8 @@ button{font:inherit}
     net.game.on("presence",{event:"leave"},()=>{
       if(net.connected && !state.over) statusEl.textContent="Opponent disconnected. Waiting for them to return…";
     });
-    net.game.subscribe(async status=>{
-      if(status!=="SUBSCRIBED") return;
+    net.game.subscribe(async channelStatus=>{
+      if(channelStatus!=="SUBSCRIBED") return;
       await net.game.track({player_id:net.playerId,color:net.color});
       document.getElementById("flipResult").textContent="Opponent found. Connecting…";
     });
@@ -1021,6 +1142,12 @@ button{font:inherit}
     document.querySelector('input[name="gameMode"][value="ai"]').checked=true;
     document.querySelector('input[name="humanColor"][value="black"]').checked=true;
     document.getElementById("colorChoice").style.display="block";
+    document.getElementById("friendPanel").classList.add("hidden");
+    document.getElementById("friendStartActions").classList.remove("hidden");
+    document.getElementById("friendJoinBox").classList.add("hidden");
+    document.getElementById("friendHostBox").classList.add("hidden");
+    document.getElementById("friendStatus").textContent="";
+    document.getElementById("friendCodeInput").value="";
   }
 
   async function newGame(){
@@ -1042,11 +1169,16 @@ button{font:inherit}
     input.addEventListener("change",()=>{
       const mode=document.querySelector('input[name="gameMode"]:checked').value;
       document.getElementById("colorChoice").style.display=mode==="ai" ? "block" : "none";
+      const friendPanel=document.getElementById("friendPanel");
       const button=document.getElementById("flipBtn");
+      friendPanel.classList.toggle("hidden",mode!=="friend");
+      button.classList.toggle("hidden",mode==="friend");
       button.textContent=mode==="online" ? "Quick Match" : "Flip Token";
       document.querySelector(".start-copy").innerHTML=mode==="online"
         ? "<strong>Play against another person online.</strong><br>Quick Match pairs the next two waiting players."
-        : "<strong>Choose your color.</strong><br>Flip a token to determine who goes first.";
+        : mode==="friend"
+          ? "<strong>Play with a friend.</strong><br>Create a code or join your friend's game."
+          : "<strong>Choose your color.</strong><br>Flip a token to determine who goes first.";
     });
   });
 
@@ -1099,7 +1231,36 @@ button{font:inherit}
     render();
   });
 
+  document.getElementById("createFriendBtn").addEventListener("click",createFriendMatch);
+  document.getElementById("showJoinFriendBtn").addEventListener("click",()=>{
+    document.getElementById("friendStartActions").classList.add("hidden");
+    document.getElementById("friendJoinBox").classList.remove("hidden");
+    document.getElementById("friendCodeInput").focus();
+  });
+  document.getElementById("friendBackBtn").addEventListener("click",()=>{
+    document.getElementById("friendJoinBox").classList.add("hidden");
+    document.getElementById("friendStartActions").classList.remove("hidden");
+    document.getElementById("friendStatus").textContent="";
+  });
+  document.getElementById("friendCodeInput").addEventListener("input",e=>e.target.value=cleanInviteCode(e.target.value));
+  document.getElementById("friendCodeInput").addEventListener("keydown",e=>{if(e.key==="Enter") joinFriendMatch();});
+  document.getElementById("joinFriendBtn").addEventListener("click",joinFriendMatch);
+  document.getElementById("copyCodeBtn").addEventListener("click",e=>copyText(document.getElementById("inviteCodeDisplay").textContent,e.currentTarget));
+  document.getElementById("copyLinkBtn").addEventListener("click",e=>copyText(inviteLink(document.getElementById("inviteCodeDisplay").textContent),e.currentTarget));
+
   window.addEventListener("beforeunload",()=>{ if(net.connected && net.game) net.game.send({type:"broadcast",event:"resign",payload:{player_id:net.playerId}}); });
+
+  const joinCode=cleanInviteCode(new URLSearchParams(window.location.search).get("join"));
+  if(joinCode.length===6){
+    document.querySelector('input[name="gameMode"][value="friend"]').checked=true;
+    document.getElementById("colorChoice").style.display="none";
+    document.getElementById("friendPanel").classList.remove("hidden");
+    document.getElementById("flipBtn").classList.add("hidden");
+    document.getElementById("friendStartActions").classList.add("hidden");
+    document.getElementById("friendJoinBox").classList.remove("hidden");
+    document.getElementById("friendCodeInput").value=joinCode;
+    document.querySelector(".start-copy").innerHTML="<strong>Join your friend's game.</strong><br>The invite code is ready below.";
+  }
 
   buildHits();
   state=blankState("black");
