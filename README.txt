@@ -1,3 +1,12 @@
-KOTH Dev Build v0.6.5
+KOTH Dev Build v0.6.8
 
-Added Friend Match invite codes, copyable invite links, and manual code joining. Quick Match, AI, local play, multiplayer move sync, and the v0.6.4 center-connection fix remain included.
+Mobile interface redesign:
+- Compact KOTH header with current turn and scores
+- Game board directly beneath the header
+- Place, Move, and Jump controls attached directly beneath the board
+- Undo and New Game beneath the action controls
+- Turn History and Rules collapsed by default on phones
+- Compact mobile start/game-mode dialog
+- Automatic scroll to the top of the game after a match begins
+
+Desktop layout, game rules, AI, Quick Match, Friend Match, and multiplayer synchronization remain unchanged.
