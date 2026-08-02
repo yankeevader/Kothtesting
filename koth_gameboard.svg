@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1100"
+     height="1100"
+     viewBox="0 0 1100 1100"
+     role="img"
+     aria-labelledby="title desc">
+  <title id="title">KOTH game board</title>
+  <desc id="desc">A circular board with four concentric circles and progressively subdivided radial spaces.</desc>
+
+  <rect width="1100" height="1100" fill="#ffffff"/>
+
+  <g fill="none"
+     stroke="#171717"
+     stroke-width="5"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+    <circle cx="550" cy="550" r="120" />
+    <circle cx="550" cy="550" r="240" />
+    <circle cx="550" cy="550" r="360" />
+    <circle cx="550" cy="550" r="480" />
+    
+    <line x1="550" y1="550" x2="1030.000" y2="550.000" />
+    <line x1="550" y1="550" x2="550.000" y2="70.000" />
+    <line x1="550" y1="550" x2="70.000" y2="550.000" />
+    <line x1="550" y1="550" x2="550.000" y2="1030.000" />
+    <line x1="634.853" y1="465.147" x2="889.411" y2="210.589" />
+    <line x1="465.147" y1="465.147" x2="210.589" y2="210.589" />
+    <line x1="465.147" y1="634.853" x2="210.589" y2="889.411" />
+    <line x1="634.853" y1="634.853" x2="889.411" y2="889.411" />
+    <line x1="771.731" y1="458.156" x2="993.462" y2="366.312" />
+    <line x1="641.844" y1="328.269" x2="733.688" y2="106.538" />
+    <line x1="458.156" y1="328.269" x2="366.312" y2="106.538" />
+    <line x1="328.269" y1="458.156" x2="106.538" y2="366.312" />
+    <line x1="328.269" y1="641.844" x2="106.538" y2="733.688" />
+    <line x1="458.156" y1="771.731" x2="366.312" y2="993.462" />
+    <line x1="641.844" y1="771.731" x2="733.688" y2="993.462" />
+    <line x1="771.731" y1="641.844" x2="993.462" y2="733.688" />
+  </g>
+</svg>

@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KOTH — A Game of Strategic Conversion</title>
+<style>
+:root{
+  --paper:#f6f1e7;
+  --ink:#171717;
+  --muted:#6a655d;
+  --panel:#fffdf8;
+  --line:#d4cec2;
+  --accent:#b91c1c;
+  --valid:#167a44;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#202020;color:var(--ink);font-family:Georgia,"Times New Roman",serif}
+button{font:inherit}
+.app{height:100vh;display:grid;grid-template-columns:260px 1fr 340px;gap:16px;padding:16px;max-width:100vw;margin:0}
+.board-shell{position:sticky;top:18px;height:calc(100vh - 36px);background:var(--paper);border:3px solid #0f0f0f;border-radius:8px;padding:14px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#gameBoard{width:100%;height:auto;max-height:calc(100vh - 56px);display:block;touch-action:manipulation}
+.sidebar{display:flex;flex-direction:column;gap:14px;height:calc(100vh - 36px);overflow:hidden}
+.panel{background:var(--panel);border:2px solid var(--ink);border-radius:7px;padding:14px}
+.logo{display:block;width:100%;height:auto;max-height:116px;object-fit:contain}
+.subtitle{text-align:center;margin:-4px 0 4px;font-size:18px}
+.turn-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:2px solid var(--ink);background:var(--paper)}
+.turn-token{width:34px;height:34px;border-radius:50%;border:3px solid var(--ink);flex:none}
+.turn-token.black{background:#111}
+.turn-token.white{background:white}
+.score-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.score{border:1px solid var(--line);padding:9px;text-align:center;background:white}
+.score strong{font-size:28px;display:block}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.action-btn,.small-btn{border:2px solid var(--ink);background:white;padding:10px 8px;cursor:pointer;border-radius:4px}
+.action-btn:hover,.small-btn:hover{background:#eee9df}
+.action-btn.active{background:var(--ink);color:white}
+.action-btn:disabled,.small-btn:disabled{opacity:.45;cursor:not-allowed}
+.help{font-size:15px;line-height:1.38;color:#292929}
+.status{min-height:52px;border-left:5px solid var(--ink);padding:8px 10px;background:#f0ece3;line-height:1.35}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.history{max-height:175px;overflow:auto;margin:0;padding-left:22px;font-size:14px}
+.history li{margin:4px 0}
+.rules details{border-top:1px solid var(--line);padding:8px 0}
+.rules details:first-child{border-top:0}
+.rules summary{cursor:pointer;font-weight:bold}
+.rules p{margin:7px 0;font-size:14px;line-height:1.4}
+.node-hit{fill:transparent;cursor:pointer}
+.node-hit:hover{fill:rgba(0,0,0,.06)}
+.token{stroke:#111;stroke-width:5;pointer-events:none}
+.token.white{fill:#fff}
+.token.black{fill:#111}
+.selection-ring{fill:none;stroke:#b91c1c;stroke-width:10;pointer-events:none}
+.valid-ring{fill:rgba(22,122,68,.14);stroke:#167a44;stroke-width:7;stroke-dasharray:12 8;pointer-events:none}
+.active-pulse{fill:none;stroke:#b91c1c;stroke-width:8;pointer-events:none;animation:pulse 1.1s ease-out 2}
+@keyframes pulse{0%{opacity:1;r:31px}100%{opacity:0;r:58px}}
+.connector-overlay{stroke:transparent;stroke-width:18;pointer-events:none}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.74);display:flex;align-items:center;justify-content:center;padding:20px;z-index:20}
+.modal{width:min(520px,100%);background:var(--paper);border:4px solid #111;padding:22px;text-align:center}
+.modal h1{margin:0 0 6px;font-size:42px}
+.modal p{line-height:1.45}
+.modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+.modal-actions button{border:3px solid #111;background:white;padding:14px;cursor:pointer;font-weight:bold}
+.modal-actions button:hover{background:#111;color:white}
+.hidden{display:none!important}
+.end-title{font-size:34px;margin:0}
+.legend{display:flex;gap:14px;justify-content:center;font-size:14px;margin-top:8px}
+.legend span{display:flex;align-items:center;gap:6px}
+.dot{width:18px;height:18px;border-radius:50%;border:2px solid #111;display:inline-block}
+.dot.black{background:#111}.dot.white{background:white}
+@media(max-width:980px){
+  .app{height:auto;grid-template-columns:1fr}
+  #gameBoard{max-height:none}
+  .board-shell{position:relative;top:auto;height:auto}
+  .sidebar{height:auto;overflow:visible;display:grid;grid-template-columns:1fr 1fr}
+  .sidebar .panel:first-child,.sidebar .rules{grid-column:1/-1}
+}
+@media(max-width:640px){
+  .app{padding:8px;gap:8px}
+  .board-shell{padding:4px;min-height:0}
+  .sidebar{display:flex}
+  .panel{padding:10px}
+}
+
+.start-copy{
+  margin:14px auto 18px;
+  max-width:390px;
+  font-size:20px;
+  line-height:1.45;
+}
+.flip-stage{
+  min-height:138px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+}
+.flip-token{
+  width:88px;
+  height:88px;
+  border:5px solid #111;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 5px 0 rgba(0,0,0,.18);
+  transform-style:preserve-3d;
+  opacity:0;
+}
+.flip-token.black{background:#111}
+.flip-token.white{background:#fff}
+.flip-token.flipping{
+  opacity:1;
+  animation:tokenFlip 1.05s cubic-bezier(.3,.05,.2,1);
+}
+.flip-token.result{
+  opacity:1;
+}
+.flip-result{
+  min-height:31px;
+  margin:0;
+  font-size:24px;
+  font-weight:bold;
+}
+#flipBtn{
+  width:100%;
+  font-size:24px;
+}
+#flipBtn:disabled{
+  opacity:.65;
+  cursor:wait;
+}
+@keyframes tokenFlip{
+  0%{transform:rotateY(0deg) translateY(0)}
+  18%{transform:rotateY(180deg) translateY(-18px)}
+  38%{transform:rotateY(360deg) translateY(-30px)}
+  60%{transform:rotateY(540deg) translateY(-20px)}
+  80%{transform:rotateY(720deg) translateY(-8px)}
+  100%{transform:rotateY(900deg) translateY(0)}
+}
+.modal.fade-away{
+  animation:modalFade .35s ease forwards;
+}
+.modal-backdrop.fade-away{
+  animation:backdropFade .35s ease forwards;
+}
+@keyframes modalFade{
+  to{opacity:0;transform:scale(.985)}
+}
+@keyframes backdropFade{
+  to{background:rgba(0,0,0,0)}
+}
+@media (prefers-reduced-motion: reduce){
+  .flip-token.flipping{animation:none}
+  .modal.fade-away,.modal-backdrop.fade-away{animation:none}
+}
+
+
+.mode-box{
+  margin:14px 0 4px;
+  padding:12px;
+  border:2px solid #111;
+  background:#fffdf8;
+  text-align:left;
+}
+.mode-box label{
+  display:block;
+  margin:7px 0;
+  cursor:pointer;
+}
+.ai-thinking{
+  display:inline-block;
+  margin-left:8px;
+  font-style:italic;
+  color:var(--muted);
+}
+
+
+.token{transform-box:fill-box;transform-origin:center;transition:filter .12s ease,transform .12s ease}
+.node-hit:hover~*{} /* preserves the clean SVG hit layer */
+.moving-token{stroke:#111;stroke-width:5;pointer-events:none;filter:drop-shadow(0 8px 5px rgba(0,0,0,.22))}
+.moving-token.white{fill:#fff}.moving-token.black{fill:#111}
+.winner-token{width:104px;height:104px;border-radius:50%;border:6px solid #111;margin:4px auto 14px;box-shadow:0 6px 0 rgba(0,0,0,.16)}
+.winner-token.black{background:#111}.winner-token.white{background:#fff}
+.victory-title{font-size:42px;letter-spacing:.04em;margin:0 0 8px;text-transform:uppercase}
+.victory-reason{font-size:20px;margin:8px 0 18px}
+.victory-score{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.victory-score>div{border:2px solid #111;background:#fff;padding:12px}
+.victory-score strong{display:block;font-size:30px;margin-top:3px}
+.victory-modal{animation:victoryIn .42s cubic-bezier(.2,.8,.2,1)}
+@keyframes victoryIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.victory-modal{animation:none}}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel" id="leftSidebar" style="height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden">
+<h2 style="margin-top:0">Turn History</h2>
+<ol id="history" class="history" style="flex:0 0 220px;overflow:auto;margin-bottom:12px"></ol>
+<h2 style="margin:0 0 8px">Rules</h2>
+<div class="rules" style="flex:1;overflow:auto">
+<details open><summary>Setup & Turn</summary><p>Perform exactly one action: Place, Move, or Jump.</p></details>
+<details><summary>Place</summary><p>Place left/right on the same ring.</p></details>
+<details><summary>Move</summary><p>Move one connected space. Inward requires friendly support.</p></details>
+<details><summary>Jump</summary><p>Jump two spaces. Inward jumps require additional support.</p></details>
+<details><summary>Convert</summary><p>Adjacent connected occupied tokens flip to the active token's color.</p></details>
+<details><summary>How to Win</summary><p>The game ends when a player ends their turn with a token in the center or has no legal Place, Move, or Jump. The player controlling the most tokens when the game ends wins.</p></details>
+</div>
+</aside>
+
+<section class="board-shell" aria-label="KOTH game board">
+    <svg id="gameBoard" viewBox="0 0 1100 1100" role="img" aria-label="Playable KOTH board">
+      <rect width="1100" height="1100" fill="#ffffff"/>
+      <g id="canonicalBoard" fill="none" stroke="#171717" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="550" cy="550" r="120"/>
+        <circle cx="550" cy="550" r="240"/>
+        <circle cx="550" cy="550" r="360"/>
+        <circle cx="550" cy="550" r="480"/>
+        <line x1="550" y1="550" x2="1030" y2="550"/>
+        <line x1="550" y1="550" x2="550" y2="70"/>
+        <line x1="550" y1="550" x2="70" y2="550"/>
+        <line x1="550" y1="550" x2="550" y2="1030"/>
+        <line x1="634.853" y1="465.147" x2="889.411" y2="210.589"/>
+        <line x1="465.147" y1="465.147" x2="210.589" y2="210.589"/>
+        <line x1="465.147" y1="634.853" x2="210.589" y2="889.411"/>
+        <line x1="634.853" y1="634.853" x2="889.411" y2="889.411"/>
+        <line x1="771.731" y1="458.156" x2="993.462" y2="366.311"/>
+        <line x1="641.844" y1="328.269" x2="733.689" y2="106.538"/>
+        <line x1="458.156" y1="328.269" x2="366.311" y2="106.538"/>
+        <line x1="328.269" y1="458.156" x2="106.538" y2="366.311"/>
+        <line x1="328.269" y1="641.844" x2="106.538" y2="733.689"/>
+        <line x1="458.156" y1="771.731" x2="366.311" y2="993.462"/>
+        <line x1="641.844" y1="771.731" x2="733.689" y2="993.462"/>
+        <line x1="771.731" y1="641.844" x2="993.462" y2="733.689"/>
+      </g>
+      <g id="highlights"></g>
+      <g id="tokens"></g>
+      <g id="hits"></g>
+    </svg>
+  </section>
+
+  <aside class="sidebar">
+    <section class="panel">
+      <img class="logo" src="koth_logo.svg" alt="KOTH">
+      <div class="subtitle">A Game of Strategic Conversion</div>
+      <div class="turn-banner">
+        <div>
+          <small>Current turn</small>
+          <div id="turnText"><strong>Choose who starts</strong></div>
+        </div>
+        <div id="turnToken" class="turn-token black"></div>
+      </div>
+      <div class="score-grid">
+        <div class="score">Black<strong id="blackScore">2</strong></div>
+        <div class="score">White<strong id="whiteScore">2</strong></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="actions">
+        <button class="action-btn" data-action="place">Place</button>
+        <button class="action-btn" data-action="move">Move</button>
+        <button class="action-btn" data-action="jump">Jump</button>
+      </div>
+      <p id="actionHelp" class="help">Choose an action, then select one of your tokens.</p>
+      <div id="status" class="status" aria-live="polite">Game ready.</div>
+    </section>
+
+    <section class="panel">
+<div class="controls">
+<button id="undoBtn" class="small-btn">Undo Turn</button>
+<button id="newBtn" class="small-btn">New Game</button>
+</div>
+</section>
+  </aside>
+</div>
+
+<div id="startModal" class="modal-backdrop">
+  <div class="modal" id="startDialog">
+    <img class="logo" src="koth_logo.svg" alt="KOTH">
+    <p class="start-copy"><strong>Choose your color.</strong><br>
+    Flip a token to determine who goes first.</p>
+
+    <div class="mode-box">
+      <strong>Game Mode</strong>
+      <label><input type="radio" name="gameMode" value="ai" checked> Play against the computer</label>
+      <label><input type="radio" name="gameMode" value="local"> Two players on this computer</label>
+    </div>
+
+    <div class="mode-box" id="colorChoice">
+      <strong>Your Color</strong>
+      <label><input type="radio" name="humanColor" value="black" checked> Black</label>
+      <label><input type="radio" name="humanColor" value="white"> White</label>
+    </div>
+
+    <div class="flip-stage" aria-live="polite">
+      <div id="flipTokenVisual" class="flip-token" aria-hidden="true"></div>
+      <p id="flipResult" class="flip-result"></p>
+    </div>
+
+    <div class="modal-actions" style="grid-template-columns:1fr">
+      <button id="flipBtn">Flip Token</button>
+    </div>
+  </div>
+</div>
+
+<div id="endModal" class="modal-backdrop hidden">
+  <div class="modal victory-modal">
+    <div id="winnerToken" class="winner-token black" aria-hidden="true"></div>
+    <h2 class="victory-title" id="endTitle">BLACK WINS!</h2>
+    <p class="victory-reason" id="endReason"></p>
+    <div class="victory-score">
+      <div>Black controls<strong id="endBlack">0</strong>tokens</div>
+      <div>White controls<strong id="endWhite">0</strong>tokens</div>
+    </div>
+    <div class="modal-actions">
+      <button id="playAgain" style="grid-column:1/-1">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const CENTER = 550;
+  const RADII = {1:120, 2:240, 3:360, 4:480};
+  const RING_COUNTS = {1:8, 2:16, 3:16, 4:16};
+  const nodes = new Map();
+
+  const tokensLayer = document.getElementById("tokens");
+  const highlightsLayer = document.getElementById("highlights");
+  const hitsLayer = document.getElementById("hits");
+  const statusEl = document.getElementById("status");
+  const turnText = document.getElementById("turnText");
+  const turnToken = document.getElementById("turnToken");
+  const actionHelp = document.getElementById("actionHelp");
+  const historyEl = document.getElementById("history");
+  const blackScore = document.getElementById("blackScore");
+  const whiteScore = document.getElementById("whiteScore");
+  const undoBtn = document.getElementById("undoBtn");
+  const actionButtons = [...document.querySelectorAll(".action-btn")];
+
+  let state;
+  let snapshots = [];
+
+  function nodeId(ring, idx){ return ring === 0 ? "C" : `R${ring}-${idx}`; }
+
+  function addNode(ring, idx, angle){
+    const radius = ring === 0 ? 0 : RADII[ring];
+    const rad = angle * Math.PI / 180;
+    const x = CENTER + radius * Math.cos(rad);
+    const y = CENTER - radius * Math.sin(rad);
+    const id = nodeId(ring, idx);
+    nodes.set(id, {
+      id, ring, idx, angle, x, y,
+      angular: [],
+      inward: null,
+      outward: null,
+      neighbors: []
+    });
+  }
+
+  addNode(0, 0, 0);
+  for(let ring=1; ring<=4; ring++){
+    const count = RING_COUNTS[ring];
+    for(let i=0;i<count;i++) addNode(ring, i, i * (360/count));
+  }
+
+  // Ring connections.
+  for(let ring=1; ring<=4; ring++){
+    const count = RING_COUNTS[ring];
+    for(let i=0;i<count;i++){
+      const n = nodes.get(nodeId(ring,i));
+      n.angular = [
+        nodeId(ring,(i-1+count)%count),
+        nodeId(ring,(i+1)%count)
+      ];
+    }
+  }
+
+  // Radial connections matching the canonical SVG.
+  for(let i=0;i<8;i++){
+    const r1 = nodes.get(nodeId(1,i));
+    r1.inward = "C";
+    nodes.get("C").neighbors.push(r1.id);
+
+    const r2idx = i*2;
+    r1.outward = nodeId(2,r2idx);
+    nodes.get(nodeId(2,r2idx)).inward = r1.id;
+  }
+  for(let ring=2; ring<4; ring++){
+    for(let i=0;i<16;i++){
+      const a = nodes.get(nodeId(ring,i));
+      const b = nodes.get(nodeId(ring+1,i));
+      a.outward = b.id;
+      b.inward = a.id;
+    }
+  }
+
+  // Complete neighbor lists.
+  for(const n of nodes.values()){
+    const set = new Set(n.neighbors);
+    n.angular.forEach(x => set.add(x));
+    if(n.inward) set.add(n.inward);
+    if(n.outward) set.add(n.outward);
+    n.neighbors = [...set];
+  }
+  // Center neighbors were partially added above.
+  nodes.get("C").neighbors = [...new Set(nodes.get("C").neighbors)];
+
+  function blankState(first="black"){
+    return {
+      current:first,
+      action:null,
+      selected:null,
+      legal:[],
+      active:null,
+      over:false,
+      turnNo:1,
+      board:{
+        [nodeId(4,0)]:"black",   // East
+        [nodeId(4,8)]:"black",   // West
+        [nodeId(4,4)]:"white",   // North
+        [nodeId(4,12)]:"white"   // South
+      },
+      history:[],
+      mode:"ai",
+      humanColor:"black",
+      aiColor:"white",
+      aiThinking:false,
+      animating:false
+    };
+  }
+
+  function cloneState(s){ return JSON.parse(JSON.stringify(s)); }
+
+  function createSvg(tag, attrs={}){
+    const el = document.createElementNS(NS,tag);
+    for(const [k,v] of Object.entries(attrs)) el.setAttribute(k,v);
+    return el;
+  }
+
+  function buildHits(){
+    hitsLayer.textContent="";
+    for(const n of nodes.values()){
+      const hit = createSvg("circle",{
+        cx:n.x,cy:n.y,r:34,class:"node-hit","data-node":n.id,
+        "aria-label":n.id
+      });
+      hit.addEventListener("click",()=>onNodeClick(n.id));
+      hitsLayer.appendChild(hit);
+    }
+  }
+
+  function count(color){
+    return Object.values(state.board).filter(v=>v===color).length;
+  }
+
+  function render(){
+    tokensLayer.textContent="";
+    highlightsLayer.textContent="";
+
+    for(const [id,color] of Object.entries(state.board)){
+      const n = nodes.get(id);
+      tokensLayer.appendChild(createSvg("circle",{
+        cx:n.x,cy:n.y,r:25,class:`token ${color}`,"data-node":id
+      }));
+    }
+
+    if(state.selected){
+      const n=nodes.get(state.selected);
+      highlightsLayer.appendChild(createSvg("circle",{
+        cx:n.x,cy:n.y,r:37,class:"selection-ring"
+      }));
+    }
+    for(const id of state.legal){
+      const n=nodes.get(id);
+      highlightsLayer.appendChild(createSvg("circle",{
+        cx:n.x,cy:n.y,r:31,class:"valid-ring"
+      }));
+    }
+    if(state.active){
+      const n=nodes.get(state.active);
+      highlightsLayer.appendChild(createSvg("circle",{
+        cx:n.x,cy:n.y,r:31,class:"active-pulse"
+      }));
+    }
+
+    blackScore.textContent=count("black");
+    whiteScore.textContent=count("white");
+    turnText.innerHTML = `<strong>${cap(state.current)}</strong>`;
+    turnToken.className=`turn-token ${state.current}`;
+
+    actionButtons.forEach(btn=>{
+      btn.classList.toggle("active",btn.dataset.action===state.action);
+      btn.disabled=state.over || isAiTurn() || state.animating;
+    });
+    undoBtn.disabled=snapshots.length===0 || state.over || state.mode==="ai" || isAiTurn() || state.animating;
+    historyEl.innerHTML=state.history.map(x=>`<li>${x}</li>`).join("");
+  }
+
+  function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+
+  function occupied(id){ return !!state.board[id]; }
+  function friendly(id,color=state.current){ return state.board[id]===color; }
+
+  function ringSideNeighbors(id){
+    const n=nodes.get(id);
+    return n.ring===0 ? [] : n.angular;
+  }
+
+  function inwardSupport(id,color){
+    const sides=ringSideNeighbors(id);
+    return sides.length===2 && sides.every(x=>friendly(x,color));
+  }
+
+  function legalDestinations(source, action, color=state.current){
+    const n=nodes.get(source);
+    if(!n || !friendly(source,color)) return [];
+    const out = new Set();
+
+    if(action==="place"){
+      ringSideNeighbors(source).forEach(id=>{if(!occupied(id)) out.add(id)});
+    }
+
+    if(action==="move"){
+      ringSideNeighbors(source).forEach(id=>{if(!occupied(id)) out.add(id)});
+      if(n.outward && !occupied(n.outward)) out.add(n.outward);
+      if(n.inward && !occupied(n.inward) && inwardSupport(source,color)) out.add(n.inward);
+    }
+
+    if(action==="jump"){
+      if(n.ring>0){
+        const count=RING_COUNTS[n.ring];
+        for(const delta of [-2,2]){
+          const dest=nodeId(n.ring,(n.idx+delta+count)%count);
+          if(!occupied(dest)) out.add(dest);
+        }
+      }
+
+      if(n.outward){
+        const middle=nodes.get(n.outward);
+        if(middle.outward && !occupied(middle.outward)) out.add(middle.outward);
+      }
+
+      if(n.inward && inwardSupport(source,color)){
+        const middle=nodes.get(n.inward);
+        if(middle && middle.inward && inwardSupport(middle.id,color) && !occupied(middle.inward)){
+          out.add(middle.inward);
+        }
+      }
+    }
+
+    return [...out];
+  }
+
+  function playerHasAnyAction(color){
+    const sources=Object.keys(state.board).filter(id=>state.board[id]===color);
+    for(const src of sources){
+      for(const action of ["place","move","jump"]){
+        if(legalDestinations(src,action,color).length) return true;
+      }
+    }
+    return false;
+  }
+
+
+  function isAiTurn(){
+    return state.mode==="ai" && state.current===state.aiColor && !state.over;
+  }
+
+  function allLegalActions(color){
+    const actions=[];
+    const sources=Object.keys(state.board).filter(id=>state.board[id]===color);
+    for(const source of sources){
+      for(const action of ["place","move","jump"]){
+        for(const dest of legalDestinations(source,action,color)){
+          actions.push({action,source,dest});
+        }
+      }
+    }
+    return actions;
+  }
+
+  function simulateAction(candidate,color){
+    const board={...state.board};
+    if(candidate.action==="place"){
+      board[candidate.dest]=color;
+    }else{
+      delete board[candidate.source];
+      board[candidate.dest]=color;
+    }
+
+    let converted=0;
+    for(const neighbor of nodes.get(candidate.dest).neighbors){
+      if(board[neighbor] && board[neighbor]!==color){
+        board[neighbor]=color;
+        converted++;
+      }
+    }
+    return {board,converted};
+  }
+
+  function scoreAiMove(candidate){
+    const color=state.aiColor;
+    const enemy=color==="black"?"white":"black";
+    const sim=simulateAction(candidate,color);
+    const board=sim.board;
+
+    if(board["C"]===color) return 100000;
+
+    const own=Object.values(board).filter(v=>v===color).length;
+    const opp=Object.values(board).filter(v=>v===enemy).length;
+    const destNode=nodes.get(candidate.dest);
+
+    // Lightweight, deterministic evaluation using only the legal resulting position.
+    let score=(own-opp)*120;
+    score+=sim.converted*180;
+    score+=(5-destNode.ring)*18;
+    if(candidate.action==="place") score+=24;
+    if(candidate.action==="jump") score+=10;
+
+    // Reward keeping options and mildly punish exposed tokens.
+    const oldBoard=state.board;
+    state.board=board;
+    const mobility=allLegalActions(color).length;
+    const enemyMobility=allLegalActions(enemy).length;
+    state.board=oldBoard;
+    score+=mobility*2;
+    score-=enemyMobility*1.25;
+
+    // Tiny random tie-break so repeated games do not feel scripted.
+    score+=Math.random()*3;
+    return score;
+  }
+
+  function chooseAiMove(){
+    const moves=allLegalActions(state.aiColor);
+    if(!moves.length) return null;
+    moves.sort((a,b)=>scoreAiMove(b)-scoreAiMove(a));
+    return moves[0];
+  }
+
+  function queueAiTurn(){
+    if(!isAiTurn()) return;
+    state.aiThinking=true;
+    state.action=null;
+    state.selected=null;
+    state.legal=[];
+    actionButtons.forEach(btn=>btn.disabled=true);
+    statusEl.innerHTML=`${cap(state.aiColor)} is thinking<span class="ai-thinking">…</span>`;
+    actionHelp.textContent="The computer follows the same Place, Move, Jump, and conversion rules.";
+    render();
+
+    window.setTimeout(()=>{
+      if(!isAiTurn()) return;
+      const move=chooseAiMove();
+      state.aiThinking=false;
+      if(!move){
+        endGame(`${cap(state.aiColor)} has no legal moves remaining.`,state.humanColor);
+        return;
+      }
+      executeAction(move.action,move.source,move.dest);
+    },650);
+  }
+
+  function setAction(action){
+    if(state.over || isAiTurn() || state.animating) return;
+    state.action=action;
+    state.selected=null;
+    state.legal=[];
+    state.active=null;
+    actionHelp.textContent = {
+      place:"Select one of your tokens, then an open space immediately left or right on the same ring.",
+      move:"Select one of your tokens, then a highlighted space one step away.",
+      jump:"Select one of your tokens, then a highlighted space two steps away."
+    }[action];
+    statusEl.textContent=`${cap(state.current)}: select a token to ${action}.`;
+    render();
+  }
+
+  function onNodeClick(id){
+    if(state.over || isAiTurn() || state.animating || !state.action) {
+      if(!state.action) statusEl.textContent="Choose Place, Move, or Jump first.";
+      return;
+    }
+
+    if(state.selected && state.legal.includes(id)){
+      executeAction(state.action,state.selected,id);
+      return;
+    }
+
+    if(friendly(id)){
+      state.selected=id;
+      state.legal=legalDestinations(id,state.action);
+      if(state.legal.length){
+        statusEl.textContent=`Choose one of the ${state.legal.length} highlighted destination${state.legal.length===1?"":"s"}.`;
+      }else{
+        statusEl.textContent=`That token has no legal ${state.action}. Choose another token or action.`;
+      }
+      render();
+      return;
+    }
+
+    statusEl.textContent=`Select a ${state.current} token.`;
+  }
+
+  function wait(ms){ return new Promise(resolve=>window.setTimeout(resolve,ms)); }
+
+  function tokenElement(id){
+    return tokensLayer.querySelector(`[data-node="${id}"]`);
+  }
+
+  async function animateActionToken(action,source,dest,color){
+    const to=nodes.get(dest);
+    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      await wait(20);
+      return;
+    }
+
+    if(action==="place"){
+      const piece=createSvg("circle",{cx:to.x,cy:to.y,r:25,class:`moving-token ${color}`});
+      piece.style.transformBox="fill-box";
+      piece.style.transformOrigin="center";
+      tokensLayer.appendChild(piece);
+      await piece.animate([
+        {transform:"scale(.15)",opacity:0},
+        {transform:"scale(1.12)",opacity:1,offset:.72},
+        {transform:"scale(1)",opacity:1}
+      ],{duration:260,easing:"cubic-bezier(.2,.8,.2,1)"}).finished;
+      piece.remove();
+      return;
+    }
+
+    const from=nodes.get(source);
+    const original=tokenElement(source);
+    if(original) original.style.opacity="0";
+    const piece=createSvg("circle",{cx:from.x,cy:from.y,r:25,class:`moving-token ${color}`});
+    piece.style.transformBox="fill-box";
+    piece.style.transformOrigin="center";
+    tokensLayer.appendChild(piece);
+    const dx=to.x-from.x, dy=to.y-from.y;
+    const frames=action==="jump"
+      ? [
+          {transform:"translate(0px,0px) scale(1)"},
+          {transform:`translate(${dx*.5}px,${dy*.5}px) scale(1.22)`,offset:.5},
+          {transform:`translate(${dx}px,${dy}px) scale(1)`}
+        ]
+      : [
+          {transform:"translate(0px,0px) scale(1)"},
+          {transform:`translate(${dx}px,${dy}px) scale(1)`}
+        ];
+    await piece.animate(frames,{duration:action==="jump"?390:280,easing:"cubic-bezier(.3,.05,.2,1)"}).finished;
+    piece.remove();
+  }
+
+  async function animateConversion(id,newColor,delay=0){
+    if(delay) await wait(delay);
+    const piece=tokenElement(id);
+    if(!piece) return;
+    if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      piece.setAttribute("class",`token ${newColor}`);
+      return;
+    }
+    const first=piece.animate([
+      {transform:"scaleX(1)"},
+      {transform:"scaleX(.05)"}
+    ],{duration:115,easing:"ease-in",fill:"forwards"});
+    await first.finished;
+    piece.setAttribute("class",`token ${newColor}`);
+    const second=piece.animate([
+      {transform:"scaleX(.05)"},
+      {transform:"scaleX(1.08)",offset:.78},
+      {transform:"scaleX(1)"}
+    ],{duration:145,easing:"ease-out",fill:"forwards"});
+    await second.finished;
+  }
+
+  function describe(action,source,dest,converted){
+    const verb={place:"placed at",move:"moved to",jump:"jumped to"}[action];
+    const c=converted ? ` and converted ${converted}` : "";
+    return `${cap(state.current)} ${verb} ${dest}${c}.`;
+  }
+
+  async function executeAction(action,source,dest){
+    if(state.animating || state.over) return;
+    snapshots.push(cloneState(state));
+    const actingColor=state.current;
+    state.animating=true;
+    state.active=null;
+    state.selected=null;
+    state.legal=[];
+    state.action=null;
+    render();
+
+    await animateActionToken(action,source,dest,actingColor);
+
+    if(action==="place"){
+      state.board[dest]=actingColor;
+    }else{
+      delete state.board[source];
+      state.board[dest]=actingColor;
+    }
+
+    const conversions=[];
+    for(const neighbor of nodes.get(dest).neighbors){
+      if(state.board[neighbor] && state.board[neighbor]!==actingColor){
+        conversions.push(neighbor);
+      }
+    }
+
+    state.active=dest;
+    render();
+
+    for(let i=0;i<conversions.length;i++){
+      await animateConversion(conversions[i],actingColor,i===0?80:35);
+      state.board[conversions[i]]=actingColor;
+    }
+
+    state.history.push(describe(action,source,dest,conversions.length));
+    state.animating=false;
+    render();
+
+    if(state.board["C"]){
+      await wait(500);
+      endGame(`${cap(actingColor)} reached the center.`);
+      return;
+    }
+
+    state.current = actingColor==="black" ? "white" : "black";
+    state.turnNo++;
+    state.active=null;
+
+    if(!playerHasAnyAction(state.current)){
+      render();
+      await wait(400);
+      endGame(`${cap(state.current)} has no legal moves remaining.`,actingColor);
+      return;
+    }
+
+    statusEl.textContent=`${cap(state.current)} to play. Choose an action.`;
+    actionHelp.textContent="Choose an action, then select one of your tokens.";
+    render();
+
+    if(isAiTurn()) queueAiTurn();
+  }
+
+  function endGame(reason){
+    state.over=true;
+    state.active=null;
+    state.animating=false;
+    render();
+    const b=count("black"), w=count("white");
+    const winner=(b===w ? null : (b>w?"black":"white"));
+    const title=winner ? `${cap(winner)} Wins!` : "Draw!";
+    document.getElementById("endTitle").textContent=title;
+    document.getElementById("endReason").innerHTML=`<strong>Game Ended:</strong> ${reason}<br><br><strong>Final Control</strong><br>⚫ Black: ${b}<br>⚪ White: ${w}<br><br><strong>${winner?cap(winner):"Neither player"} ${winner?"controls more tokens and wins!":"finished in a draw."}</strong>`;
+    document.getElementById("endBlack").textContent=b;
+    document.getElementById("endWhite").textContent=w;
+    const winnerToken=document.getElementById("winnerToken");
+    winnerToken.className=`winner-token ${winner || "white"}`;
+    winnerToken.style.display=winner ? "block" : "none";
+    document.getElementById("endModal").classList.remove("hidden");
+    statusEl.textContent=winner ? `${cap(winner)} wins!` : "The game ends in a draw!";
+  }
+
+  function startGame(first,mode="ai",humanColor="black"){
+    state=blankState(first);
+    state.mode=mode;
+    state.humanColor=humanColor;
+    state.aiColor=humanColor==="black"?"white":"black";
+    snapshots=[];
+    document.getElementById("startModal").classList.add("hidden");
+    document.getElementById("endModal").classList.add("hidden");
+
+    if(mode==="ai"){
+      statusEl.textContent=`You are ${cap(humanColor)}. ${cap(first)} goes first.`;
+    }else{
+      statusEl.textContent=`${cap(first)} goes first. Choose an action.`;
+    }
+
+    actionHelp.textContent="Choose an action, then select one of your tokens.";
+    render();
+
+    if(isAiTurn()) queueAiTurn();
+  }
+
+  function resetFlipModal(){
+    const modal=document.getElementById("startModal");
+    const dialog=document.getElementById("startDialog");
+    const token=document.getElementById("flipTokenVisual");
+    const result=document.getElementById("flipResult");
+    const button=document.getElementById("flipBtn");
+
+    modal.classList.remove("hidden","fade-away");
+    dialog.classList.remove("fade-away");
+    token.className="flip-token";
+    result.textContent="";
+    button.disabled=false;
+    button.textContent="Flip Token";
+    document.querySelector('input[name="gameMode"][value="ai"]').checked=true;
+    document.querySelector('input[name="humanColor"][value="black"]').checked=true;
+    document.getElementById("colorChoice").style.display="block";
+  }
+
+  function newGame(){
+    state=blankState("black");
+    snapshots=[];
+    document.getElementById("endModal").classList.add("hidden");
+    resetFlipModal();
+    statusEl.textContent="Game ready.";
+    render();
+  }
+
+  actionButtons.forEach(btn=>btn.addEventListener("click",()=>setAction(btn.dataset.action)));
+
+  document.querySelectorAll('input[name="gameMode"]').forEach(input=>{
+    input.addEventListener("change",()=>{
+      document.getElementById("colorChoice").style.display=
+        document.querySelector('input[name="gameMode"]:checked').value==="ai" ? "block" : "none";
+    });
+  });
+
+  document.getElementById("flipBtn").addEventListener("click",()=>{
+    const button=document.getElementById("flipBtn");
+    const token=document.getElementById("flipTokenVisual");
+    const result=document.getElementById("flipResult");
+    const modal=document.getElementById("startModal");
+    const dialog=document.getElementById("startDialog");
+    const first=Math.random()<.5?"black":"white";
+    const mode=document.querySelector('input[name="gameMode"]:checked').value;
+    const humanColor=document.querySelector('input[name="humanColor"]:checked').value;
+
+    button.disabled=true;
+    button.textContent="Flipping…";
+    result.textContent="";
+    token.className="flip-token flipping";
+
+    window.setTimeout(()=>{
+      token.className=`flip-token result ${first}`;
+      result.textContent=`${cap(first)} goes first!`;
+      button.textContent=`${cap(first)} starts`;
+
+      window.setTimeout(()=>{
+        dialog.classList.add("fade-away");
+        modal.classList.add("fade-away");
+
+        window.setTimeout(()=>{
+          modal.classList.add("hidden");
+          modal.classList.remove("fade-away");
+          dialog.classList.remove("fade-away");
+          startGame(first,mode,humanColor);
+          if(mode==="local"){
+            statusEl.textContent=`Token flip: ${cap(first)} goes first. Choose an action.`;
+          }else if(first===humanColor){
+            statusEl.textContent=`Token flip: ${cap(first)} goes first. Choose an action.`;
+          }
+        },350);
+      },1150);
+    },1050);
+  });
+  document.getElementById("newBtn").addEventListener("click",newGame);
+  document.getElementById("playAgain").addEventListener("click",newGame);
+  undoBtn.addEventListener("click",()=>{
+    if(!snapshots.length || state.over) return;
+    state=snapshots.pop();
+    statusEl.textContent=`Turn undone. ${cap(state.current)} to play.`;
+    render();
+  });
+
+  buildHits();
+  state=blankState("black");
+  render();
+})();
+</script>
+</body>
+</html>
