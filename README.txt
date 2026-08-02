@@ -1,17 +1,10 @@
-KOTH Dev Build v0.6.3
+KOTH Dev Build v0.6.4
 
-Open index.html in a modern browser, or host these files together on GitHub Pages.
+Changes from v0.6.3:
+- Fixed center conversion connectivity.
+- Only the four ring-1 spaces with actual board lines to the center are connected to the center.
+- The four diagonal ring-1 spaces no longer convert when a token reaches the center.
+- Quick Match multiplayer, AI, local play, movement, scoring, and win conditions are otherwise unchanged.
 
-Included:
-- Complete local two-player game
-- Computer opponent
-- Quick Match online multiplayer through Supabase Realtime
-- Live move synchronization between two browsers
-- Place, Move, Jump, direct-neighbor conversion
-- Inward support rules
-- Center and no-legal-action end conditions
-- Scoring, undo for local games, restart, rules reference
-
-Local and computer modes require no server. Quick Match requires an internet connection.
-
-Online v0.6.3 is an early test build. It has no accounts, rankings, saved games, invite codes, reconnect recovery, or authoritative anti-cheat server.
+Deployment:
+Upload index.html, koth_gameboard.svg, koth_logo.svg, and README.txt to the GitHub Pages repository root.
